@@ -77,7 +77,13 @@ require("dedalo.config").setup({})
 local by_email = {
   ["ada@example.com"] = { name = "Ada", handle = "ada", share = 50.25, linked = true },
   ["bea@example.com"] = { name = "Bea", handle = nil, share = 49.75, linked = false },
-  ["bot@example.com"] = { name = "Bot", handle = "bot", share = 0, linked = false, excluded = true },
+  ["bot@example.com"] = {
+    name = "Bot",
+    handle = "bot",
+    share = 0,
+    linked = false,
+    excluded = true,
+  },
 }
 
 check("a linked contributor shows handle and share", function()
