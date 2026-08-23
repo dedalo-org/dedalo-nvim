@@ -1,0 +1,139 @@
+*dedalo.txt*  Attribution where the code is
+
+==============================================================================
+CONTENTS                                                     *dedalo-contents*
+
+  1. Introduction ............................ |dedalo-introduction|
+  2. Requirements ............................ |dedalo-requirements|
+  3. Setup ................................... |dedalo-setup|
+  4. Commands ................................ |dedalo-commands|
+  5. What the annotation says ................ |dedalo-annotation|
+  6. Highlights .............................. |dedalo-highlights|
+  7. Troubleshooting ......................... |dedalo-troubleshooting|
+
+==============================================================================
+1. INTRODUCTION                                          *dedalo-introduction*
+
+Dedalo turns git merges into contributor payouts. This plugin shows, next to
+the lines in front of you, who earns from them.
+
+It reads the same history a payout is computed from: `git blame` says who
+wrote each line, `dedalo contributors` says what each author's work is worth,
+and `dedalo identity list` says whether that author has a wallet on file.
+
+The third one is why this is an editor plugin rather than a report. An author
+with a contribution score and no wallet lands in a payout plan's `unresolved`
+list and is paid nothing. Until now the only way to notice was to read the
+plan. Now it is on the line.
+
+==============================================================================
+2. REQUIREMENTS                                          *dedalo-requirements*
+
+  - Neovim 0.10 or newer
+  - `git` on $PATH
+  - `dedalo` on $PATH — https://github.com/dedalo-org/dedalo
+  - a repository with a `dedalo.toml`
+
+`:checkhealth dedalo` checks all four and says which is missing.
+
+==============================================================================
+3. SETUP                                                        *dedalo-setup*
+
+Calling |dedalo.setup()| is optional; the defaults work. >lua
+
+    require("dedalo").setup({
+      -- Executable to run. Looked up on $PATH.
+      cmd = "dedalo",
+
+      -- Annotate every buffer in a Dedalo project on open. Off by default:
+      -- a plugin that shells out to git blame on every BufEnter without
+      -- being asked is a plugin people uninstall.
+      auto_attach = false,
+
+      -- Hide a share below this, in per cent. The author is still shown.
+      min_share = 0.1,
+
+      -- "eol", "right_align" or "inline".
+      virt_text_pos = "eol",
+    })
+<
+==============================================================================
+4. COMMANDS                                                  *dedalo-commands*
+
+                                                                     *:Dedalo*
+:Dedalo [action]        Without an argument, toggles the annotation on the
+                        current buffer.
+
+                        attach    annotate this buffer
+                        detach    remove the annotation
+                        toggle    the default
+                        refresh   forget the cache and annotate again
+
+                        Attribution is cached against the commit at HEAD, so
+                        `refresh` is only needed after something outside git
+                        changed — a `dedalo identity link`, or an edit to
+                        `dedalo.toml`.
+
+The same four are available as functions: >lua
+
+    require("dedalo").attach()
+    require("dedalo").detach()
+    require("dedalo").toggle()
+    require("dedalo").refresh()
+    require("dedalo").is_attached()   -- for a statusline
+<
+==============================================================================
+5. WHAT THE ANNOTATION SAYS                                *dedalo-annotation*
+
+One annotation per run of consecutive lines by the same author, not one per
+line. >
+
+    ▏ ada · 50.0%
+        Linked to a wallet. The share is of the contributor pool for the
+        pending round — not an amount, because the size of the round is not
+        decided yet.
+
+    ▏ Bea · 50.0% — no wallet, would not be paid
+        Has earned a share and has no wallet on file. This is the one worth
+        acting on: `dedalo identity link`.
+
+    ▏ bot — excluded from payouts
+        Deliberately unpaid, by an `excluded` identity. Not a mistake, and
+        not highlighted as one.
+
+    ▏ Old — outside this round
+        Blamed to somebody with no score in the pending range, usually
+        because their work is already paid.
+
+    ▏ uncommitted — earns nothing yet
+        Not committed. Attribution reads merge history, so unsaved and
+        uncommitted work is worth nothing until it lands.
+<
+==============================================================================
+6. HIGHLIGHTS                                              *dedalo-highlights*
+
+Linked to existing groups, so the plugin follows the colourscheme instead of
+fighting it. >
+
+    DedaloLinked         -> Comment
+    DedaloUnlinked       -> WarningMsg
+    DedaloUncommitted    -> NonText
+<
+Override with |nvim_set_hl()| before or after setup.
+
+==============================================================================
+7. TROUBLESHOOTING                                    *dedalo-troubleshooting*
+
+Nothing appears~
+Run `:checkhealth dedalo`. The usual causes are `dedalo` not on $PATH, or the
+repository having no `dedalo.toml`.
+
+Everything says "outside this round"~
+Every merge in the range is already settled, so the pending round is empty.
+`dedalo scan` shows what is pending.
+
+A share looks wrong~
+The share is of the *pending* round, computed from merges since the last
+settlement. `dedalo contributors` prints the same numbers.
+
+vim:tw=78:ts=8:ft=help:norl:

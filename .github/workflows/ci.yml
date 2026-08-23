@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned by checksum rather than by tag. A moving tag can be repointed at new
+  # code by whoever owns it, and these run against the repository's contents.
+  NVIM_VERSION: "v0.12.5"
+  NVIM_SHA256: "bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875"
+  STYLUA_VERSION: "v2.5.2"
+  STYLUA_SHA256: "bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab"
+
+jobs:
+  lint:
+    timeout-minutes: 10
+    name: stylua + luacheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Install stylua
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/stylua.zip \
+            "https://github.com/JohnnyMorganz/StyLua/releases/download/${STYLUA_VERSION}/stylua-linux-x86_64.zip"
+          echo "${STYLUA_SHA256}  /tmp/stylua.zip" | sha256sum --check --strict
+          unzip -q -o /tmp/stylua.zip -d /tmp/stylua
+          sudo install -m 0755 /tmp/stylua/stylua /usr/local/bin/stylua
+
+      - name: stylua
+        run: stylua --check .
+
+      - name: Install luacheck
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends luarocks
+          sudo luarocks install luacheck
+
+      - name: luacheck
+        run: luacheck lua plugin tests
+
+  test:
+    timeout-minutes: 15
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Install Neovim
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/nvim.tar.gz \
+            "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz"
+          echo "${NVIM_SHA256}  /tmp/nvim.tar.gz" | sha256sum --check --strict
+          sudo tar -xzf /tmp/nvim.tar.gz -C /opt
+          sudo ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
+          nvim --version | head -1
+
+      # The unit tests need no `dedalo`: they exercise the blame parser and the
+      # join, which are the two places a wrong answer would be silent.
+      - name: Unit tests
+        run: nvim --headless -u tests/minimal_init.lua -l tests/run.lua
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+
+      - name: Install dedalo
+        run: cargo install dedalo --locked --git https://github.com/dedalo-org/dedalo
+
+      # The end-to-end test builds a repository with two contributors, links
+      # one of them, and asserts the annotation says the other would not be
+      # paid. That sentence is the whole reason this plugin exists, so it is
+      # checked against the real CLI rather than a fixture.
+      - name: End-to-end
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)/demo"
+          mkdir -p "$work"
+          git -C "$work" init -q -b main
+          git -C "$work" config user.email ada@example.com
+          git -C "$work" config user.name Ada
+          echo seed > "$work/a.txt"
+          git -C "$work" add -A && git -C "$work" commit -qm "Initial commit"
+          git -C "$work" checkout -q -b feat
+          printf 'a\nb\nc\n' > "$work/f.txt"
+          git -C "$work" add -A && git -C "$work" commit -qm "Add a feature"
+          git -C "$work" checkout -q main
+          git -C "$work" merge -q --no-ff feat -m "Merge pull request: feat"
+          git -C "$work" config user.email bea@example.com
+          git -C "$work" config user.name Bea
+          git -C "$work" checkout -q -b feat2
+          printf 'd\ne\nf\n' >> "$work/f.txt"
+          git -C "$work" add -A && git -C "$work" commit -qm "Extend it"
+          git -C "$work" checkout -q main
+          git -C "$work" merge -q --no-ff feat2 -m "Merge pull request: feat2"
+
+          ( cd "$work" && dedalo init --name demo --open-collective demo >/dev/null )
+          ( cd "$work" && dedalo identity link ada \
+              0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB --email ada@example.com >/dev/null )
+
+          DEDALO_TEST_REPO="$work" nvim --headless -u tests/minimal_init.lua -l tests/run.lua
+
+  ci-ok:
+    timeout-minutes: 5
+    name: CI
+    if: always()
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any job failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "all checks passed"
