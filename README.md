@@ -3,8 +3,8 @@
 Attribution where the code is.
 
 [Dedalo](https://github.com/dedalo-org/dedalo) turns git merges into
-contributor payouts. This shows, next to the lines in front of you, who earns
-from them.
+contributor payouts — see [the handbook](https://dedalo-org.github.io/dedalo/)
+for how. This shows, next to the lines in front of you, who earns from them.
 
 ```text
   local function split(total, weights)      ▏ ada · 50.0%
