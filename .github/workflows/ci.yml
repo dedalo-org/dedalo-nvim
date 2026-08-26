@@ -27,7 +27,7 @@ jobs:
     name: stylua + luacheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -58,7 +58,7 @@ jobs:
     name: tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -81,8 +81,19 @@ jobs:
         with:
           toolchain: stable
 
+      # `--branch v0.1` is not optional. `--git` installs from the default
+      # branch, and dedalo's default branch is `main`, which holds the 0.0.0
+      # placeholder that reserves the name on crates.io: two files, no
+      # subcommands, and a binary that prints where the code is. Installing
+      # from it produces a `dedalo` that cannot `init`, and the end-to-end
+      # test below fails thirty seconds later with a message about a missing
+      # dedalo.toml, which is not a clue anybody would follow to here.
+      #
+      # Pin this to a released version once one exists.
       - name: Install dedalo
-        run: cargo install dedalo --locked --git https://github.com/dedalo-org/dedalo
+        run: |
+          cargo install dedalo --locked \
+            --git https://github.com/dedalo-org/dedalo --branch v0.1
 
       # The end-to-end test builds a repository with two contributors, links
       # one of them, and asserts the annotation says the other would not be
