@@ -120,7 +120,7 @@ jobs:
 
           ( cd "$work" && dedalo init --name demo --open-collective demo >/dev/null )
           ( cd "$work" && dedalo identity link ada \
-              0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB --email ada@example.com >/dev/null )
+              4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU --email ada@example.com >/dev/null )
 
           DEDALO_TEST_REPO="$work" nvim --headless -u tests/minimal_init.lua -l tests/run.lua
 
