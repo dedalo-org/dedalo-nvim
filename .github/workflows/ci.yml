@@ -81,19 +81,15 @@ jobs:
         with:
           toolchain: stable
 
-      # `--branch v0.1` is not optional. `--git` installs from the default
-      # branch, and dedalo's default branch is `main`, which holds the 0.0.0
-      # placeholder that reserves the name on crates.io: two files, no
-      # subcommands, and a binary that prints where the code is. Installing
-      # from it produces a `dedalo` that cannot `init`, and the end-to-end
-      # test below fails thirty seconds later with a message about a missing
-      # dedalo.toml, which is not a clue anybody would follow to here.
+      # No branch to pin any more: dedalo's `main` is the trunk again and
+      # carries the code, so `--git` picking the default branch is now the
+      # right thing rather than the trap it was for six days.
       #
-      # Pin this to a released version once one exists.
+      # This still tracks a moving branch. Pin it to a released version once
+      # 0.0.1 exists — `cargo install dedalo --version 0.0.1` — so a change
+      # over there cannot turn this test red without anybody touching it.
       - name: Install dedalo
-        run: |
-          cargo install dedalo --locked \
-            --git https://github.com/dedalo-org/dedalo --branch v0.1
+        run: cargo install dedalo --locked --git https://github.com/dedalo-org/dedalo
 
       # The end-to-end test builds a repository with two contributors, links
       # one of them, and asserts the annotation says the other would not be
