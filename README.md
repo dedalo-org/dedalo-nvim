@@ -281,8 +281,31 @@ outside git — linking an identity, editing `dedalo.toml`.
 nvim --headless -u tests/minimal_init.lua -l tests/run.lua
 ```
 
-The unit tests cover the blame parser and the join — the two places a wrong
-answer would be silent rather than loud. Set `DEDALO_TEST_REPO` to a Dedalo
+Seventeen of them, and what they cover is chosen rather than incidental: the
+blame parser, the join, and **every state where being wrong is worse than being
+absent**.
+
+| State | What must happen |
+| --- | --- |
+| `dedalo` not on `PATH` | One clear message, not one per redraw |
+| The file is not in a git repository | One message, nothing annotated |
+| The repository has no `dedalo.toml` | A hint, not a stack trace — and silence under `auto_attach` |
+| `dedalo` returns malformed JSON | No annotation, one message |
+| `dedalo` exits non-zero | Its own stderr, verbatim |
+| `dedalo` is slow | `attach` returns immediately and the buffer stays editable |
+| The buffer is modified | `uncommitted — earns nothing yet` |
+| An author has no wallet | `would not be paid` — the whole reason this exists |
+
+`dedalo` is faked for those, by `tests/fake/dedalo`. Git is not: its output is
+what the parser exists to read, so faking it would test the fake. `dedalo` is
+different — what matters is not what it computes but what this plugin does when
+it is absent, slow or wrong, and those are not states a real binary can be
+asked to be in.
+
+`tests/fixtures/` holds the exact `--json` shapes this plugin reads, with the
+`dedalo` version they came from. **A renamed field in the main repository
+breaks this plugin silently**, and the fixture is what makes the failure say
+*which field* rather than "no annotation appeared". Set `DEDALO_TEST_REPO` to a Dedalo
 project and the end-to-end test runs too: it builds a repository with two
 contributors, links one, and asserts the annotation says the other would not
 be paid. That sentence is the whole reason this exists, so CI checks it

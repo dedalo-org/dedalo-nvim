@@ -1,0 +1,13 @@
+[
+  {
+    "handle": "ada",
+    "wallet": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "emails": ["ada@example.com"],
+    "excluded": false
+  },
+  {
+    "handle": "bot",
+    "emails": ["bot@example.com"],
+    "excluded": true
+  }
+]

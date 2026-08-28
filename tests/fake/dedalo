@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# A `dedalo` that does what the test tells it to.
+#
+# The boundary worth faking. Faking git would test the fake — git's output is
+# what the parser exists to read, so those tests use real `git blame` output.
+# `dedalo` is different: what matters here is not what it computes but what
+# this plugin does when it is **absent, slow, or wrong**, and those three are
+# not states a real binary can be asked to be in on demand.
+#
+# FAKE_DEDALO_MODE:
+#   ok          the fixtures, unchanged                 (default)
+#   malformed   valid exit code, output that is not JSON
+#   slow        the fixtures, after FAKE_DEDALO_DELAY seconds
+#   fail        non-zero, with a message on stderr
+#   old         reports a version below the plugin's floor
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")" && pwd)"
+fixtures="$here/../fixtures"
+mode="${FAKE_DEDALO_MODE:-ok}"
+
+case "${1:-}" in
+  --version)
+    if [ "$mode" = "old" ]; then echo "dedalo 0.0.0"; else echo "dedalo 0.0.1"; fi
+    exit 0
+    ;;
+esac
+
+if [ "$mode" = "fail" ]; then
+  echo "dedalo: no dedalo.toml in this repository" >&2
+  exit 1
+fi
+
+if [ "$mode" = "malformed" ]; then
+  # The shape of a real disaster: a tool that half-wrote its output, or a
+  # wrapper that printed a warning before it. Exit code says success.
+  echo "warning: something happened"
+  echo '{"contributions": [{"author": {"name":'
+  exit 0
+fi
+
+if [ "$mode" = "slow" ]; then
+  sleep "${FAKE_DEDALO_DELAY:-2}"
+fi
+
+case "${1:-}${2:-}" in
+  contributors*) cat "$fixtures/contributors.json" ;;
+  identitylist)  cat "$fixtures/identities.json" ;;
+  *)
+    echo "fake dedalo: unexpected arguments: $*" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,30 @@
+{
+  "contributions": [
+    {
+      "author": { "name": "Ada", "email": "ada@example.com" },
+      "score": 30150,
+      "merges": 3,
+      "commits": 3,
+      "insertions": 300,
+      "deletions": 12
+    },
+    {
+      "author": { "name": "Bea", "email": "bea@example.com" },
+      "score": 29850,
+      "merges": 2,
+      "commits": 4,
+      "insertions": 290,
+      "deletions": 40
+    },
+    {
+      "author": { "name": "bot", "email": "bot@example.com" },
+      "score": 100,
+      "merges": 1,
+      "commits": 1,
+      "insertions": 2,
+      "deletions": 0
+    }
+  ],
+  "merges_analysed": 6,
+  "total_score": 60100
+}
