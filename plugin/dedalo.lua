@@ -21,6 +21,11 @@ vim.api.nvim_create_user_command("Dedalo", function(opts)
     detach = dedalo().detach,
     toggle = dedalo().toggle,
     refresh = dedalo().refresh,
+    -- What the last attach cost. Not a benchmark harness — one number, from
+    -- this repository, so nobody has to take the README's word for it.
+    profile = function()
+      vim.notify(table.concat(dedalo().profile(), "\n"), vim.log.levels.INFO)
+    end,
   }
   local run = actions[action]
   if run == nil then
@@ -34,6 +39,6 @@ end, {
   complete = function(lead)
     return vim.tbl_filter(function(name)
       return name:sub(1, #lead) == lead
-    end, { "attach", "detach", "toggle", "refresh" })
+    end, { "attach", "detach", "toggle", "refresh", "profile" })
   end,
 })
