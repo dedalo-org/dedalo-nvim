@@ -132,6 +132,7 @@ Neovim's version, `git`, `dedalo` and its version, the repository, and
 :Dedalo attach
 :Dedalo detach
 :Dedalo refresh    " after a `dedalo identity link`
+:Dedalo profile    " what the last attach cost, in milliseconds
 ```
 
 Everything is asynchronous. `git blame` on a large file in a large repository
@@ -146,6 +147,7 @@ Every key, with its default:
 | --- | --- | --- |
 | `cmd` | `"dedalo"` | The executable to run. A name is looked up on `PATH`; an absolute path is used as given. |
 | `auto_attach` | `false` | Annotate a buffer as soon as it is opened in a Dedalo project. See [what it costs](#what-it-costs) before turning it on. |
+| `debounce_ms` | `150` | Quiet period before an auto-attach fires, in milliseconds. `0` attaches immediately. Only used when `auto_attach` is on. |
 | `min_share` | `0.1` | Hide the percentage below this many per cent. The author is still shown; only the number is dropped, because below a tenth of a per cent it says nothing. |
 | `virt_text_pos` | `"eol"` | Where the annotation sits: `"eol"`, `"right_align"` or `"inline"`. |
 | `highlights.linked` | `"DedaloLinked"` | Group for an author with a wallet. |
@@ -176,38 +178,69 @@ The plugin shells out. That is worth being straight about, because a
 blame-style annotation that runs a subprocess at the wrong moment is a thing
 people notice and then uninstall.
 
-**What runs.** Three commands, per attach:
+**What runs, and what it measured.** Four commands per attach. Median of five
+runs against [dedalo][dedalo] itself — 29 unpaid changes, a 700-line file:
 
-```text
-git rev-parse HEAD              cheap
-dedalo contributors --json      reads merge history — the expensive one
-dedalo identity list --json     reads dedalo.toml
-git blame --line-porcelain      one file, proportional to its history
+| Command | Cold | Warm |
+| --- | --- | --- |
+| `git rev-parse HEAD` | 1 ms | 1 ms |
+| `dedalo contributors --json` | **118 ms** | cached |
+| `dedalo identity list --json` | 3 ms | cached |
+| `git blame --line-porcelain` | 11 ms | cached |
+| **total** | **~133 ms** | **~1 ms** |
+
+Measure it on your own repository rather than trusting the table:
+
+```vim
+:Dedalo attach
+:Dedalo profile
 ```
+
+`dedalo contributors` is essentially the whole cost, and the number above is
+for a project with a short unpaid range — see
+[what scales badly](#what-scales-badly).
+
+[dedalo]: https://github.com/dedalo-org/dedalo
 
 **When it runs.** Only when asked: `:Dedalo`, `:Dedalo attach`, or
 `:Dedalo refresh`. **Not** on `CursorHold`, not on `CursorMoved`, and not on
 `TextChanged` — moving the cursor never costs anything.
 
 With `auto_attach = true` it also runs on `BufReadPost` and `BufWritePost`, for
-buffers backed by a real file inside a Dedalo project. It is off by default for
-exactly that reason.
+buffers backed by a real file inside a Dedalo project — **debounced by
+`debounce_ms`** (150 ms). Those two events are not chatty on their own;
+`:bufdo`, a session restore and holding `]q` through a quickfix list are, and
+each opens buffers faster than four subprocesses can finish.
 
-**What is cached.** Attribution is cached per repository against the commit at
-`HEAD`, because that is the only thing that changes the answer. So the second
-buffer in the same repository pays for `git blame` alone, and the first pays
-for everything. `:Dedalo refresh` drops the cache — for the things that happen
-outside git, like `dedalo identity link` or an edit to `dedalo.toml`.
+**What is cached, and against what.** Both caches are keyed on the commit at
+`HEAD`, because history is the only thing that changes either answer:
+
+| | Key | Dropped by |
+| --- | --- | --- |
+| attribution | repository + `HEAD` | a commit, or `:Dedalo refresh` |
+| blame | repository + `HEAD` + file | a commit, or `:Dedalo refresh` |
+
+So the second buffer in a repository pays for `git blame` alone, and reopening
+a file you already annotated costs nothing. `:Dedalo refresh` drops both — for
+the things that happen outside git, like `dedalo identity link` or an edit to
+`dedalo.toml`.
 
 **Nothing blocks.** Every subprocess goes through `vim.system` with a callback.
 A slow repository makes the annotation appear late; it does not make Neovim
 stop.
 
-The cost that scales badly is `dedalo contributors` on a repository with a very
-long unpaid range — it reads every landed change since the last settled round,
-which on a project that has never settled is the whole history. That is a
-property of Dedalo rather than of this plugin, and it is measured
+### What scales badly
+
+`dedalo contributors` reads **every landed change since the last settled
+round**, which on a project that has never settled is the whole history. The
+118 ms above is a project with 29 of them; a repository with ten thousand
+unpaid merges is a different proposition. That is a property of Dedalo rather
+than of this plugin, and it is measured
 [in the main repository](https://github.com/dedalo-org/dedalo/blob/main/tests/performance.rs).
+
+If that is your situation, leave `auto_attach` off and run `:Dedalo` when you
+want it. The first attach pays; every one after it is cached until the next
+commit.
 
 ## Version compatibility
 

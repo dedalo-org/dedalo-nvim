@@ -87,6 +87,13 @@ auto_attach ~
         `BufReadPost` and `BufWritePost`. Read |dedalo-cost| before turning
         this on.
 
+                                                  *dedalo-config-debounce_ms*
+debounce_ms ~
+        Default: `150`
+        Quiet period before an auto-attach fires, in milliseconds. `0`
+        attaches immediately. Only used when |dedalo-config-auto_attach| is
+        on.
+
                                                     *dedalo-config-min_share*
 min_share ~
         Default: `0.1`
@@ -120,19 +127,24 @@ icons ~
                         attach    annotate this buffer
                         detach    remove the annotation
                         toggle    the default
-                        refresh   forget the cache and annotate again
+                        refresh   forget the caches and annotate again
+                        profile   what the last attach cost, in ms
 
-                        Attribution is cached against the commit at HEAD, so
-                        `refresh` is only needed after something outside git
-                        changed — a `dedalo identity link`, or an edit to
-                        `dedalo.toml`.
+                        Attribution and blame are both cached against the
+                        commit at HEAD, so `refresh` is only needed after
+                        something outside git changed — a
+                        `dedalo identity link`, or an edit to `dedalo.toml`.
 
-The same four are available as functions: >lua
+                        `profile` reports the last attach stage by stage. See
+                        |dedalo-cost|.
+
+The same are available as functions: >lua
 
     require("dedalo").attach()
     require("dedalo").detach()
     require("dedalo").toggle()
     require("dedalo").refresh()
+    require("dedalo").profile()       -- string[], stage by stage
     require("dedalo").is_attached()   -- for a statusline
 <
 ==============================================================================
@@ -165,26 +177,36 @@ line. >
 ==============================================================================
 7. WHAT IT COSTS                                                 *dedalo-cost*
 
-The plugin shells out. Three commands run per attach: >text
+The plugin shells out. Four commands run per attach. Median of five runs
+against the Dedalo repository itself — 29 unpaid changes, a 700-line file: >text
 
-    git rev-parse HEAD              cheap
-    dedalo contributors --json      reads merge history — the expensive one
-    dedalo identity list --json     reads dedalo.toml
-    git blame --line-porcelain      one file, proportional to its history
+    git rev-parse HEAD                1 ms
+    dedalo contributors --json      118 ms   the whole cost, effectively
+    dedalo identity list --json       3 ms
+    git blame --line-porcelain       11 ms   proportional to the file
+                                    ------
+                                    133 ms   cold;  ~1 ms warm
+<
+Measure it on your own repository rather than trusting that: >vim
+
+    :Dedalo attach
+    :Dedalo profile
 <
 It runs only when asked — |:Dedalo|, `:Dedalo attach`, `:Dedalo refresh`.
 Not on `CursorHold`, not on `CursorMoved`, not on `TextChanged`. Moving the
 cursor never costs anything.
 
 With |dedalo-config-auto_attach| it also runs on `BufReadPost` and
-`BufWritePost`, for buffers backed by a real file inside a Dedalo project.
-That is why it is off by default.
+`BufWritePost`, debounced by |dedalo-config-debounce_ms|. Those two events are
+not chatty on their own; `:bufdo`, a session restore and holding `]q` through
+a quickfix list are.
 
-Attribution is cached per repository against the commit at `HEAD`, because
-that is the only thing that changes the answer. The second buffer in the same
-repository pays for `git blame` alone. `:Dedalo refresh` drops the cache, for
-the things that happen outside git: `dedalo identity link`, or an edit to
-`dedalo.toml`.
+Two caches, both keyed on the commit at `HEAD`, because history is the only
+thing that changes either answer: attribution per repository, and blame per
+file. So the second buffer in a repository pays for `git blame` alone, and
+reopening a file you already annotated costs nothing. `:Dedalo refresh` drops
+both, for the things that happen outside git: `dedalo identity link`, or an
+edit to `dedalo.toml`.
 
 Nothing blocks. Every subprocess goes through `vim.system()` with a callback,
 so a slow repository makes the annotation appear late rather than making
@@ -192,8 +214,12 @@ Neovim stop.
 
 The cost that scales badly is `dedalo contributors` on a long unpaid range: it
 reads every landed change since the last settled round, which on a project
-that has never settled is the whole history. That is a property of Dedalo
-rather than of this plugin.
+that has never settled is the whole history. The 118 ms above is a project
+with 29 of them. That is a property of Dedalo rather than of this plugin.
+
+If that is your situation, leave |dedalo-config-auto_attach| off and run
+|:Dedalo| when you want it. The first attach pays; every one after it is
+cached until the next commit.
 
 ==============================================================================
 8. HIGHLIGHTS                                              *dedalo-highlights*

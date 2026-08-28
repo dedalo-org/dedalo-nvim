@@ -14,10 +14,61 @@ local attribution = require("dedalo.attribution")
 local blame = require("dedalo.blame")
 local cli = require("dedalo.cli")
 local config = require("dedalo.config")
+local profile = require("dedalo.profile")
 local render = require("dedalo.render")
 
 ---@type table<integer, boolean>
 local attached = {}
+
+--- Pending debounce timers, one per buffer.
+---@type table<integer, uv.uv_timer_t>
+local timers = {}
+
+--- Stop and forget a buffer's pending timer.
+---@param bufnr integer
+local function cancel_timer(bufnr)
+  local timer = timers[bufnr]
+  if timer == nil then
+    return
+  end
+  timer:stop()
+  if not timer:is_closing() then
+    timer:close()
+  end
+  timers[bufnr] = nil
+end
+
+--- Run `attach` for `bufnr` after `debounce_ms` of quiet.
+---
+--- `BufReadPost` fires once per buffer, so this is not about a chatty event —
+--- it is about `:bufdo`, a session restore, and holding `]q` through a
+--- quickfix list, each of which opens buffers faster than three subprocesses
+--- can finish. Without it, walking twenty files spawns sixty processes for
+--- nineteen answers nobody read.
+---@param bufnr integer
+---@param opts table
+local function debounced_attach(bufnr, opts)
+  local delay = config.current.debounce_ms or 0
+  if delay <= 0 then
+    return M.attach(bufnr, opts)
+  end
+
+  cancel_timer(bufnr)
+
+  local timer = vim.uv.new_timer()
+  timers[bufnr] = timer
+  timer:start(
+    delay,
+    0,
+    vim.schedule_wrap(function()
+      cancel_timer(bufnr)
+      -- The buffer may have been closed while the timer was pending.
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        M.attach(bufnr, opts)
+      end
+    end)
+  )
+end
 
 --- Configure the plugin. Optional: the defaults work.
 ---@param opts dedalo.Config|nil
@@ -34,7 +85,7 @@ function M.setup(opts)
         if vim.bo[event.buf].buftype ~= "" then
           return
         end
-        M.attach(event.buf, { quiet = true })
+        debounced_attach(event.buf, { quiet = true })
       end,
     })
   end
@@ -70,8 +121,9 @@ function M.attach(bufnr, opts)
   end
 
   attached[bufnr] = true
+  profile.reset()
 
-  attribution.load(root, function(by_email, err)
+  attribution.load(root, function(by_email, err, head)
     if err then
       attached[bufnr] = nil
       if not opts.quiet then
@@ -79,7 +131,7 @@ function M.attach(bufnr, opts)
       end
       return
     end
-    blame.of_file(root, path, function(lines, berr)
+    blame.of_file(root, path, head, function(lines, berr)
       if berr then
         attached[bufnr] = nil
         if not opts.quiet then
@@ -100,6 +152,7 @@ end
 ---@param bufnr integer|nil
 function M.detach(bufnr)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
+  cancel_timer(bufnr)
   attached[bufnr] = nil
   render.clear(bufnr)
 end
@@ -123,7 +176,17 @@ end
 ---@param bufnr integer|nil
 function M.refresh(bufnr)
   attribution.clear_cache()
+  blame.clear_cache()
   M.attach(bufnr)
+end
+
+--- What the last attach cost, as lines.
+---
+--- Exposed so "is it slow on my repository" is a question somebody can answer
+--- for themselves rather than take our word for.
+---@return string[]
+function M.profile()
+  return profile.report()
 end
 
 --- Whether `bufnr` is currently annotated. For tests and statuslines.

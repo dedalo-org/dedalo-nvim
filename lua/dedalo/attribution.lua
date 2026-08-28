@@ -9,6 +9,7 @@ local M = {}
 
 local cli = require("dedalo.cli")
 local config = require("dedalo.config")
+local profile = require("dedalo.profile")
 
 --- Cached per repository, keyed by `root .. HEAD`, because attribution changes
 --- only when history does.
@@ -59,30 +60,43 @@ local function join(contributors, identities)
 end
 
 --- Load attribution for `root`, from cache when history has not moved.
+---
+--- The commit at `HEAD` is handed back with the result rather than kept
+--- private: the caller needs it to key its own cache, and reading it twice
+--- would cost a subprocess to save passing an argument.
 ---@param root string
----@param on_done fun(by_email: table|nil, err: string|nil)
+---@param on_done fun(by_email: table|nil, err: string|nil, head: string|nil)
 function M.load(root, on_done)
-  cli.run({ "git", "rev-parse", "HEAD" }, root, function(head, err)
+  profile.stage("git rev-parse HEAD", function(finish)
+    cli.run({ "git", "rev-parse", "HEAD" }, root, finish)
+  end, function(head, err)
     if err then
-      return on_done(nil, err)
+      return on_done(nil, err, nil)
     end
-    local key = root .. "@" .. vim.trim(head)
+    head = vim.trim(head)
+    local key = root .. "@" .. head
     if cache[key] then
-      return on_done(cache[key], nil)
+      profile.cached("dedalo contributors")
+      profile.cached("dedalo identity list")
+      return on_done(cache[key], nil, head)
     end
 
     local cmd = config.current.cmd
-    cli.run_json({ cmd, "contributors", "--json" }, root, function(contributors, cerr)
+    profile.stage("dedalo contributors", function(finish)
+      cli.run_json({ cmd, "contributors", "--json" }, root, finish)
+    end, function(contributors, cerr)
       if cerr then
-        return on_done(nil, cerr)
+        return on_done(nil, cerr, nil)
       end
-      cli.run_json({ cmd, "identity", "list", "--json" }, root, function(identities, ierr)
+      profile.stage("dedalo identity list", function(finish)
+        cli.run_json({ cmd, "identity", "list", "--json" }, root, finish)
+      end, function(identities, ierr)
         if ierr then
-          return on_done(nil, ierr)
+          return on_done(nil, ierr, nil)
         end
         local joined = join(contributors, identities)
         cache[key] = joined
-        on_done(joined, nil)
+        on_done(joined, nil, head)
       end)
     end)
   end)
