@@ -64,10 +64,13 @@ Calling |dedalo.setup()| is optional; the defaults work. >lua
 Pin the plugin to a tag rather than to `main`. `main` is where work lands;
 a tag is a commit somebody decided was good.
 
-Run |:checkhealth| `dedalo` afterwards. It checks Neovim's version, `git`,
-the `dedalo` executable *and its version*, the repository, and `dedalo.toml`,
-and names the one that is missing. It is the first thing to run when the
-annotation is blank.
+Run |:checkhealth| `dedalo` afterwards. It reports this plugin's version and
+checks Neovim's, `git`, the `dedalo` executable *and its version*, the
+repository, and `dedalo.toml`, naming the one that is missing. It is the first
+thing to run when the annotation is blank, and the first thing to paste into a
+bug report.
+
+The version is also `require("dedalo").version`.
 
 ==============================================================================
 4. CONFIGURATION                                               *dedalo-config*

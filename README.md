@@ -118,7 +118,13 @@ nvim -c 'helptags ~/.local/share/nvim/site/pack/dedalo/start/dedalo-nvim/doc' -c
 </details>
 
 **Pin to a tag rather than to `main`.** `main` is where work lands; a tag is a
-commit somebody decided was good.
+commit somebody decided was good — and every Neovim plugin manager pins by tag
+or by commit, so without one you are pinned to whatever `main` was that
+morning.
+
+What changed between tags is in [CHANGELOG.md](CHANGELOG.md); how a release is
+cut, and what counts as a breaking change here, is in
+[RELEASING.md](RELEASING.md).
 
 Then check the install with **`:checkhealth dedalo`**. It is the first thing to
 run when the annotation is blank, and it names the one thing that is missing —
