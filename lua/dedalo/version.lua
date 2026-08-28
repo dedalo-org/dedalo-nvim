@@ -1,0 +1,11 @@
+--- The plugin's version.
+---
+--- Neovim plugin managers pin by tag or by commit, and a user reporting a
+--- problem needs to be able to say which one they are on without reading git.
+--- `:checkhealth dedalo` prints it.
+---
+--- Never edit this by hand: `scripts/bump-version.sh` is the only thing
+--- allowed to change it, and the **Version** workflow drives that. A version
+--- that disagrees with its tag is worse than no version at all, because it is
+--- believed.
+return "0.1.0"

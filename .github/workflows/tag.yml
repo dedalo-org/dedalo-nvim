@@ -1,0 +1,79 @@
+name: Tag
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  tag:
+    name: tag the merged release
+    # Only a merged pull request that the Version workflow labelled.
+    if: >
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'release')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      # Tags are created through the API rather than by pushing, so no
+      # credential is ever written into .git/config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Read the version that was merged
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' lua/dedalo/version.lua \
+            | head -1 | tr -d '"')
+          if [ -z "$version" ]; then
+            echo "::error title=No version::cannot read lua/dedalo/version.lua"
+            exit 1
+          fi
+          {
+            printf 'version=%s\n' "$version"
+            printf 'tag=v%s\n' "$version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to move a tag that already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error title=Tag exists::${TAG} is already published; somebody's plugin manager has locked to it"
+            exit 1
+          fi
+
+      - name: Create the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags" \
+            -f tag="$TAG" -f message="$TAG" \
+            -f object="$GITHUB_SHA" -f type=commit --jq '.sha')
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${TAG}" -f sha="$tag_sha" >/dev/null
+          echo "Created $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+  # Called directly rather than relying on a push event, which GITHUB_TOKEN
+  # cannot raise.
+  release:
+    name: release
+    needs: tag
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+    permissions:
+      contents: write

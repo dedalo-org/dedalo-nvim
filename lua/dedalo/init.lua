@@ -189,6 +189,12 @@ function M.profile()
   return profile.report()
 end
 
+--- The plugin's version, as a string.
+---
+--- Exposed so a bug report can name one, and so a user's config can branch on
+--- it without reading a file out of the runtime path.
+M.version = require("dedalo.version")
+
 --- Whether `bufnr` is currently annotated. For tests and statuslines.
 ---@param bufnr integer|nil
 ---@return boolean

@@ -1,0 +1,80 @@
+name: Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Bump level, or an explicit version like 0.2.0"
+        required: true
+        default: patch
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-pull-request:
+    timeout-minutes: 15
+    name: open the release pull request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # git-cliff needs the tags and the full history to diff against.
+          fetch-depth: 0
+
+      - uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+        with:
+          tool: git-cliff
+
+      - name: Bump the version
+        id: bump
+        env:
+          LEVEL: ${{ inputs.level }}
+        run: |
+          set -euo pipefail
+          version=$(scripts/bump-version.sh "$LEVEL")
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'Bumped to %s\n' "$version" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fold the pending changes into the changelog
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          git cliff --unreleased --tag "v${VERSION}" --strip all \
+            | scripts/update-changelog.py "$VERSION"
+
+      - name: Show what the release will say
+        run: |
+          {
+            echo '### Changelog diff'
+            echo '```diff'
+            git diff -- CHANGELOG.md
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: release/v${{ steps.bump.outputs.version }}
+          base: main
+          commit-message: "chore(release): v${{ steps.bump.outputs.version }}"
+          title: "chore(release): v${{ steps.bump.outputs.version }}"
+          labels: release
+          delete-branch: true
+          body: |
+            Release **v${{ steps.bump.outputs.version }}**.
+
+            This pull request bumps `lua/dedalo/version.lua` and adds the
+            changelog section below.
+
+            Read the changelog diff the way a user would. Edit this branch
+            directly if a generated line is unclear — the file, not the
+            workflow, is the published record.
+
+            Merging this triggers the **Tag** workflow, which creates
+            `v${{ steps.bump.outputs.version }}` and the GitHub release.

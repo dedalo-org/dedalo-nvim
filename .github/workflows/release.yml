@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  # A tag pushed by a person triggers this directly.
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, e.g. v0.1.0"
+        required: true
+        type: string
+  # A tag created by a workflow raises no `push` event — GitHub suppresses
+  # events caused by GITHUB_TOKEN. So Tag calls this one directly.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # Resolved once. On a tag push `inputs.tag` is unset and `github.ref_name` is
+  # the tag; on a dispatch or a workflow_call it is the other way round.
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }} # zizmor: ignore[unsound-ternary]
+  # Same pin as ci.yml, by checksum rather than by tag: a moving tag can be
+  # repointed at new code by whoever owns it, and this runs the tests that
+  # decide whether a release happens.
+  NVIM_VERSION: "v0.12.5"
+  NVIM_SHA256: "bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875"
+
+jobs:
+  release:
+    timeout-minutes: 15
+    name: create the github release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: The tag must match the version in the source
+        id: version
+        env:
+          TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+          tag="${TAG#v}"
+          version=$(grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' lua/dedalo/version.lua \
+            | head -1 | tr -d '"')
+          if [ "$tag" != "$version" ]; then
+            echo "::error title=Mismatch::tag v$tag does not match version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # There is nothing to compile, so the gate is the same one CI runs. A
+      # release that ships code the tests reject is a release nobody should
+      # have made, tag or no tag — and a tag runs the workflow as it was at
+      # that tag, so this has to check rather than assume CI already did.
+      - name: Install Neovim
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/nvim.tar.gz \
+            "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz"
+          echo "${NVIM_SHA256}  /tmp/nvim.tar.gz" | sha256sum --check --strict
+          sudo tar -xzf /tmp/nvim.tar.gz -C /opt
+          sudo ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
+
+      - name: The tests must pass at the tag
+        run: nvim --headless -u tests/minimal_init.lua -l tests/run.lua
+
+      # The notes and the changelog cannot drift, because there is one text and
+      # it lives in the repository.
+      - name: Take the notes from the changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/changelog-section.py "$VERSION" > release-notes.md
+
+      - uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836 # v2.3.3
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          body_path: release-notes.md

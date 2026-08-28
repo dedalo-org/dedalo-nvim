@@ -348,6 +348,24 @@ check("a modified buffer keeps its uncommitted lines uncommitted", function()
   contains(label, "earns nothing yet")
 end)
 
+-- ------------------------------------------------------------ version ---
+
+check("the version is a semver string the tag workflow can read", function()
+  local version = require("dedalo.version")
+  eq(type(version), "string", "version type")
+  if not version:match("^%d+%.%d+%.%d+$") then
+    error(("version %q is not major.minor.patch"):format(version))
+  end
+  -- tag.yml greps this file for a quoted semver. If the shape of the file
+  -- changes, the tag it creates is wrong or missing, and a wrong tag is worse
+  -- than none because a plugin manager locks to it.
+  local source = table.concat(vim.fn.readfile("lua/dedalo/version.lua"), "\n")
+  local grepped = source:match('"(%d+%.%d+%.%d+)"')
+  eq(grepped, version, "what tag.yml would read")
+
+  eq(require("dedalo").version, version, "exposed on the module too")
+end)
+
 -- --------------------------------------------------------- end to end ---
 
 local repo = os.getenv("DEDALO_TEST_REPO")

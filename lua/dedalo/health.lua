@@ -57,6 +57,11 @@ end
 function M.check()
   vim.health.start("dedalo.nvim")
 
+  -- First, because it is the first thing to put in a bug report and the last
+  -- thing anybody can work out for themselves: plugin managers pin by tag, and
+  -- "latest" is not an answer.
+  vim.health.info("dedalo.nvim " .. require("dedalo.version"))
+
   if vim.fn.has("nvim-0.10") == 1 then
     vim.health.ok("Neovim " .. tostring(vim.version()))
   else
