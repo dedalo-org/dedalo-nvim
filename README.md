@@ -37,34 +37,93 @@ Three states are worth telling apart, and the annotation does:
 | `uncommitted — earns nothing yet` | not committed, so worth nothing yet |
 
 The share is of the **contributor pool for the pending round**, not an amount:
-the size of a round is not decided until someone decides it.
+the size of a round is not decided until someone decides it. What a share is
+computed from — merges, lines, the per-merge cap, co-authors — is
+[the handbook's job to explain][attribution], and this README deliberately does
+not repeat it. One explanation that stays right beats two that drift.
+
+[attribution]: https://dedalo-org.github.io/dedalo/concepts/attribution.html
 
 ## Requirements
 
-Neovim 0.10+, `git`, and [`dedalo`](https://github.com/dedalo-org/dedalo) on
-`PATH`, in a repository that has a `dedalo.toml`.
+Neovim **0.10+**, `git`, and [`dedalo`](https://github.com/dedalo-org/dedalo)
+**0.0.1+** on `PATH`, in a repository that has a `dedalo.toml`.
 
-`:checkhealth dedalo` checks all four and names the one that is missing.
+`:checkhealth dedalo` checks all five — including whether the `dedalo` on
+`PATH` is new enough — and names the one that is missing. See
+[version compatibility](#version-compatibility) for why the floor exists.
 
 ## Install
 
-With [lazy.nvim](https://github.com/folke/lazy.nvim):
+`setup()` is optional everywhere below — the defaults work, and the plugin
+loads nothing until `:Dedalo` is run.
+
+<details open>
+<summary><b>lazy.nvim</b></summary>
 
 ```lua
 {
   "dedalo-org/dedalo-nvim",
+  version = "*",        -- follow tagged releases rather than main
   cmd = "Dedalo",
   opts = {},
 }
 ```
+</details>
 
-With [packer](https://github.com/wbthomason/packer.nvim):
+<details>
+<summary><b>packer.nvim</b></summary>
 
 ```lua
-use({ "dedalo-org/dedalo-nvim", config = function() require("dedalo").setup() end })
+use({
+  "dedalo-org/dedalo-nvim",
+  tag = "*",
+  config = function()
+    require("dedalo").setup()
+  end,
+})
+```
+</details>
+
+<details>
+<summary><b>vim-plug</b></summary>
+
+```vim
+Plug 'dedalo-org/dedalo-nvim', { 'tag': '*' }
 ```
 
-`setup()` is optional — the defaults work.
+```lua
+lua require("dedalo").setup()
+```
+</details>
+
+<details>
+<summary><b>mini.deps</b></summary>
+
+```lua
+local add = require("mini.deps").add
+add({ source = "dedalo-org/dedalo-nvim", checkout = "v0.1.0" })
+require("dedalo").setup()
+```
+</details>
+
+<details>
+<summary><b>Built-in packages (<code>:help packages</code>)</b></summary>
+
+```sh
+git clone https://github.com/dedalo-org/dedalo-nvim \
+  ~/.local/share/nvim/site/pack/dedalo/start/dedalo-nvim
+nvim -c 'helptags ~/.local/share/nvim/site/pack/dedalo/start/dedalo-nvim/doc' -c q
+```
+</details>
+
+**Pin to a tag rather than to `main`.** `main` is where work lands; a tag is a
+commit somebody decided was good.
+
+Then check the install with **`:checkhealth dedalo`**. It is the first thing to
+run when the annotation is blank, and it names the one thing that is missing —
+Neovim's version, `git`, `dedalo` and its version, the repository, and
+`dedalo.toml`.
 
 ## Use
 
@@ -81,23 +140,89 @@ a poor trade.
 
 ## Configuration
 
+Every key, with its default:
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `cmd` | `"dedalo"` | The executable to run. A name is looked up on `PATH`; an absolute path is used as given. |
+| `auto_attach` | `false` | Annotate a buffer as soon as it is opened in a Dedalo project. See [what it costs](#what-it-costs) before turning it on. |
+| `min_share` | `0.1` | Hide the percentage below this many per cent. The author is still shown; only the number is dropped, because below a tenth of a per cent it says nothing. |
+| `virt_text_pos` | `"eol"` | Where the annotation sits: `"eol"`, `"right_align"` or `"inline"`. |
+| `highlights.linked` | `"DedaloLinked"` | Group for an author with a wallet. |
+| `highlights.unlinked` | `"DedaloUnlinked"` | Group for an author who would not be paid. |
+| `highlights.uncommitted` | `"DedaloUncommitted"` | Group for uncommitted, excluded and out-of-round lines. |
+| `icons.linked` | `"▏"` | Prefix for a linked author. |
+| `icons.unlinked` | `"▏"` | Prefix for an unlinked author. |
+| `icons.uncommitted` | `"▏"` | Prefix for the rest. |
+
 ```lua
 require("dedalo").setup({
   cmd = "dedalo",
-  -- Annotate every buffer in a Dedalo project on open. Off by default: a
-  -- plugin that shells out to git blame on every BufEnter without being asked
-  -- is a plugin people uninstall.
   auto_attach = false,
   min_share = 0.1,
   virt_text_pos = "eol",
 })
 ```
 
-Highlights link to existing groups (`Comment`, `WarningMsg`, `NonText`), so
-the plugin follows your colourscheme rather than fighting it. Override
-`DedaloLinked`, `DedaloUnlinked` and `DedaloUncommitted` to taste.
+The three highlight groups link to existing ones (`Comment`, `WarningMsg`,
+`NonText`), so the plugin follows your colourscheme rather than fighting it.
+Override `DedaloLinked`, `DedaloUnlinked` and `DedaloUncommitted` to taste.
 
-`:help dedalo` has the rest.
+`:help dedalo-config` has the same table, and `:help dedalo` the rest.
+
+## What it costs
+
+The plugin shells out. That is worth being straight about, because a
+blame-style annotation that runs a subprocess at the wrong moment is a thing
+people notice and then uninstall.
+
+**What runs.** Three commands, per attach:
+
+```text
+git rev-parse HEAD              cheap
+dedalo contributors --json      reads merge history — the expensive one
+dedalo identity list --json     reads dedalo.toml
+git blame --line-porcelain      one file, proportional to its history
+```
+
+**When it runs.** Only when asked: `:Dedalo`, `:Dedalo attach`, or
+`:Dedalo refresh`. **Not** on `CursorHold`, not on `CursorMoved`, and not on
+`TextChanged` — moving the cursor never costs anything.
+
+With `auto_attach = true` it also runs on `BufReadPost` and `BufWritePost`, for
+buffers backed by a real file inside a Dedalo project. It is off by default for
+exactly that reason.
+
+**What is cached.** Attribution is cached per repository against the commit at
+`HEAD`, because that is the only thing that changes the answer. So the second
+buffer in the same repository pays for `git blame` alone, and the first pays
+for everything. `:Dedalo refresh` drops the cache — for the things that happen
+outside git, like `dedalo identity link` or an edit to `dedalo.toml`.
+
+**Nothing blocks.** Every subprocess goes through `vim.system` with a callback.
+A slow repository makes the annotation appear late; it does not make Neovim
+stop.
+
+The cost that scales badly is `dedalo contributors` on a repository with a very
+long unpaid range — it reads every landed change since the last settled round,
+which on a project that has never settled is the whole history. That is a
+property of Dedalo rather than of this plugin, and it is measured
+[in the main repository](https://github.com/dedalo-org/dedalo/blob/main/tests/performance.rs).
+
+## Version compatibility
+
+| | |
+| --- | --- |
+| Neovim | **0.10 or newer** — `vim.system` and the extmark API |
+| `dedalo` | **0.0.1 or newer**, on `PATH` or named by `cmd` |
+| git | any |
+
+The `dedalo` floor is not decoration. This plugin parses
+`dedalo contributors --json` and `dedalo identity list --json`, and those shapes
+are a contract in the main repository — a renamed field breaks this plugin
+*silently*, and a silent break here tells somebody the author in front of them
+would be paid when they would not. `:checkhealth dedalo` compares the version on
+`PATH` against the floor and says so.
 
 ## How it works
 

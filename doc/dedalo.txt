@@ -1,15 +1,19 @@
 *dedalo.txt*  Attribution where the code is
 
+                                                    *dedalo* *dedalo.nvim*
+
 ==============================================================================
 CONTENTS                                                     *dedalo-contents*
 
   1. Introduction ............................ |dedalo-introduction|
   2. Requirements ............................ |dedalo-requirements|
   3. Setup ................................... |dedalo-setup|
-  4. Commands ................................ |dedalo-commands|
-  5. What the annotation says ................ |dedalo-annotation|
-  6. Highlights .............................. |dedalo-highlights|
-  7. Troubleshooting ......................... |dedalo-troubleshooting|
+  4. Configuration ........................... |dedalo-config|
+  5. Commands ................................ |dedalo-commands|
+  6. What the annotation says ................ |dedalo-annotation|
+  7. What it costs ........................... |dedalo-cost|
+  8. Highlights .............................. |dedalo-highlights|
+  9. Troubleshooting ......................... |dedalo-troubleshooting|
 
 ==============================================================================
 1. INTRODUCTION                                          *dedalo-introduction*
@@ -57,8 +61,57 @@ Calling |dedalo.setup()| is optional; the defaults work. >lua
       virt_text_pos = "eol",
     })
 <
+Pin the plugin to a tag rather than to `main`. `main` is where work lands;
+a tag is a commit somebody decided was good.
+
+Run |:checkhealth| `dedalo` afterwards. It checks Neovim's version, `git`,
+the `dedalo` executable *and its version*, the repository, and `dedalo.toml`,
+and names the one that is missing. It is the first thing to run when the
+annotation is blank.
+
 ==============================================================================
-4. COMMANDS                                                  *dedalo-commands*
+4. CONFIGURATION                                               *dedalo-config*
+
+Every key, with its default.
+
+                                                          *dedalo-config-cmd*
+cmd ~
+        Default: `"dedalo"`
+        The executable to run. A bare name is looked up on `$PATH`; an
+        absolute path is used as given.
+
+                                                  *dedalo-config-auto_attach*
+auto_attach ~
+        Default: `false`
+        Annotate a buffer as soon as it is opened in a Dedalo project, on
+        `BufReadPost` and `BufWritePost`. Read |dedalo-cost| before turning
+        this on.
+
+                                                    *dedalo-config-min_share*
+min_share ~
+        Default: `0.1`
+        Hide the percentage below this many per cent. The author is still
+        shown; only the number is dropped, because below a tenth of a per
+        cent it says nothing.
+
+                                                *dedalo-config-virt_text_pos*
+virt_text_pos ~
+        Default: `"eol"`
+        Where the annotation sits: `"eol"`, `"right_align"` or `"inline"`.
+
+                                                   *dedalo-config-highlights*
+highlights ~
+        Default: `{ linked = "DedaloLinked", unlinked = "DedaloUnlinked",`
+                 `  uncommitted = "DedaloUncommitted" }`
+        Highlight group per state. See |dedalo-highlights|.
+
+                                                        *dedalo-config-icons*
+icons ~
+        Default: `{ linked = "▏", unlinked = "▏", uncommitted = "▏" }`
+        Prefix per state.
+
+==============================================================================
+5. COMMANDS                                                  *dedalo-commands*
 
                                                                      *:Dedalo*
 :Dedalo [action]        Without an argument, toggles the annotation on the
@@ -83,7 +136,7 @@ The same four are available as functions: >lua
     require("dedalo").is_attached()   -- for a statusline
 <
 ==============================================================================
-5. WHAT THE ANNOTATION SAYS                                *dedalo-annotation*
+6. WHAT THE ANNOTATION SAYS                                *dedalo-annotation*
 
 One annotation per run of consecutive lines by the same author, not one per
 line. >
@@ -110,7 +163,40 @@ line. >
         uncommitted work is worth nothing until it lands.
 <
 ==============================================================================
-6. HIGHLIGHTS                                              *dedalo-highlights*
+7. WHAT IT COSTS                                                 *dedalo-cost*
+
+The plugin shells out. Three commands run per attach: >text
+
+    git rev-parse HEAD              cheap
+    dedalo contributors --json      reads merge history — the expensive one
+    dedalo identity list --json     reads dedalo.toml
+    git blame --line-porcelain      one file, proportional to its history
+<
+It runs only when asked — |:Dedalo|, `:Dedalo attach`, `:Dedalo refresh`.
+Not on `CursorHold`, not on `CursorMoved`, not on `TextChanged`. Moving the
+cursor never costs anything.
+
+With |dedalo-config-auto_attach| it also runs on `BufReadPost` and
+`BufWritePost`, for buffers backed by a real file inside a Dedalo project.
+That is why it is off by default.
+
+Attribution is cached per repository against the commit at `HEAD`, because
+that is the only thing that changes the answer. The second buffer in the same
+repository pays for `git blame` alone. `:Dedalo refresh` drops the cache, for
+the things that happen outside git: `dedalo identity link`, or an edit to
+`dedalo.toml`.
+
+Nothing blocks. Every subprocess goes through `vim.system()` with a callback,
+so a slow repository makes the annotation appear late rather than making
+Neovim stop.
+
+The cost that scales badly is `dedalo contributors` on a long unpaid range: it
+reads every landed change since the last settled round, which on a project
+that has never settled is the whole history. That is a property of Dedalo
+rather than of this plugin.
+
+==============================================================================
+8. HIGHLIGHTS                                              *dedalo-highlights*
 
 Linked to existing groups, so the plugin follows the colourscheme instead of
 fighting it. >
@@ -122,7 +208,7 @@ fighting it. >
 Override with |nvim_set_hl()| before or after setup.
 
 ==============================================================================
-7. TROUBLESHOOTING                                    *dedalo-troubleshooting*
+9. TROUBLESHOOTING                                    *dedalo-troubleshooting*
 
 Nothing appears~
 Run `:checkhealth dedalo`. The usual causes are `dedalo` not on $PATH, or the
