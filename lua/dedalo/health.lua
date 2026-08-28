@@ -7,12 +7,51 @@ local M = {}
 
 local config = require("dedalo.config")
 
+--- The oldest `dedalo` whose `--json` output this plugin can read.
+---
+--- The plugin parses `dedalo contributors --json` and
+--- `dedalo identity list --json`, and those shapes are a contract in the main
+--- repository: renaming a field there breaks this plugin silently, and a
+--- silent break here tells somebody the author in front of them *would be
+--- paid* when they would not. So the version is checked rather than hoped for.
+---
+--- `0.0.1` because `0.0.0` is a placeholder that holds the name on crates.io
+--- and contains no code.
+M.minimum_dedalo = "0.0.1"
+
 local function version_of(cmd)
   local result = vim.system({ cmd, "--version" }, { text = true }):wait()
   if result.code ~= 0 then
     return nil
   end
   return vim.trim(result.stdout)
+end
+
+--- Pull `1.2.3` out of whatever `--version` printed.
+---@param text string|nil
+---@return integer[]|nil
+local function semver(text)
+  if text == nil then
+    return nil
+  end
+  local major, minor, patch = text:match("(%d+)%.(%d+)%.(%d+)")
+  if major == nil then
+    return nil
+  end
+  return { tonumber(major), tonumber(minor), tonumber(patch) }
+end
+
+--- Whether `found` is at least `wanted`.
+---@param found integer[]
+---@param wanted integer[]
+---@return boolean
+local function at_least(found, wanted)
+  for index = 1, 3 do
+    if found[index] ~= wanted[index] then
+      return found[index] > wanted[index]
+    end
+  end
+  return true
 end
 
 function M.check()
@@ -32,7 +71,29 @@ function M.check()
 
   local cmd = config.current.cmd
   if vim.fn.executable(cmd) == 1 then
-    vim.health.ok(("%s: %s"):format(cmd, version_of(cmd) or "found"))
+    local reported = version_of(cmd)
+    local found = semver(reported)
+    local wanted = semver(M.minimum_dedalo)
+
+    if found == nil then
+      -- Not an error: a locally built binary can print something unexpected,
+      -- and refusing to work over it would be worse than saying so.
+      vim.health.warn(
+        ("%s: %s — cannot read a version from that"):format(cmd, reported or "found"),
+        {
+          "This plugin needs dedalo " .. M.minimum_dedalo .. " or newer.",
+        }
+      )
+    elseif at_least(found, wanted) then
+      vim.health.ok(("%s: %s (needs %s or newer)"):format(cmd, reported, M.minimum_dedalo))
+    else
+      vim.health.error(("%s: %s is older than %s"):format(cmd, reported, M.minimum_dedalo), {
+        "The --json shape this plugin reads is a contract, and older versions",
+        "predate it. An annotation built from the wrong shape can say somebody",
+        "would be paid when they would not.",
+        "cargo install dedalo --locked",
+      })
+    end
   else
     vim.health.error(("`%s` is not on PATH"):format(cmd), {
       "cargo install dedalo --locked",
