@@ -2,6 +2,16 @@
 local M = {}
 
 local cli = require("dedalo.cli")
+local profile = require("dedalo.profile")
+
+--- Cached per `root@head:path`, for the same reason attribution is: blame of a
+--- committed file changes only when history does.
+---
+--- The cache is deliberately keyed on the *file*, not the buffer. Two buffers
+--- on the same file share an answer, and a buffer reopened after `:bd` does
+--- not pay again.
+---@type table<string, table>
+local cache = {}
 
 --- Parse `git blame --line-porcelain` into one author email per line.
 ---
@@ -42,16 +52,37 @@ function M.parse(output)
 end
 
 --- Blame `path`, relative to `root`.
+---
+--- `head` keys the cache. Pass the commit the caller already read — asking git
+--- for it again here would cost a subprocess to save one.
 ---@param root string
 ---@param path string
+---@param head string|nil Commit at HEAD; omit to skip the cache.
 ---@param on_done fun(lines: table|nil, err: string|nil)
-function M.of_file(root, path, on_done)
-  cli.run({ "git", "blame", "--line-porcelain", "--", path }, root, function(stdout, err)
+function M.of_file(root, path, head, on_done)
+  local key = head and (root .. "@" .. head .. ":" .. path) or nil
+  if key and cache[key] then
+    profile.cached("git blame")
+    return on_done(cache[key], nil)
+  end
+
+  profile.stage("git blame", function(finish)
+    cli.run({ "git", "blame", "--line-porcelain", "--", path }, root, finish)
+  end, function(stdout, err)
     if err then
       return on_done(nil, err)
     end
-    on_done(M.parse(stdout), nil)
+    local parsed = M.parse(stdout)
+    if key then
+      cache[key] = parsed
+    end
+    on_done(parsed, nil)
   end)
+end
+
+--- Drop everything cached. Exposed for `:Dedalo refresh` and for tests.
+function M.clear_cache()
+  cache = {}
 end
 
 return M
