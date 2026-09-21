@@ -27,7 +27,7 @@ jobs:
           # git-cliff needs the tags and the full history to diff against.
           fetch-depth: 0
 
-      - uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
+      - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2.87.15
         with:
           tool: git-cliff
 
